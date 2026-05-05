@@ -1,3 +1,4 @@
+import { registerAs, type ConfigType } from '@nestjs/config';
 import { z } from 'zod';
 
 export const validationSchema = z.object({
@@ -5,10 +6,11 @@ export const validationSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']),
 });
 
-export type AppConfig = z.infer<typeof validationSchema>;
+type EnvConfig = z.infer<typeof validationSchema>;
 
-export default () => {
-  const validatedConfig: AppConfig = validationSchema.parse(process.env);
+export const appConfig = registerAs('app', () => ({
+  PORT: Number(process.env.PORT),
+  NODE_ENV: process.env.NODE_ENV as EnvConfig['NODE_ENV'],
+}));
 
-  return validatedConfig;
-};
+export type AppConfig = ConfigType<typeof appConfig>;

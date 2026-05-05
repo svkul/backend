@@ -1,5 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ZodResponse } from 'nestjs-zod';
 import { AuthService } from './auth.service';
 import { SignInDto, SignInResponseDto } from './dto/sign-in.dto';
 
@@ -11,7 +12,7 @@ export class AuthController {
   @Post('sign-in')
   @ApiOperation({ summary: 'Sign in with email and password' })
   @ApiBody({ type: SignInDto })
-  @ApiOkResponse({ type: SignInResponseDto })
+  @ZodResponse({ type: SignInResponseDto })
   signIn(@Body() body: SignInDto): SignInResponseDto {
     return this.authService.signIn(body);
   }

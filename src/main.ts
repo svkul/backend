@@ -1,12 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { cleanupOpenApiDoc, ZodValidationPipe } from 'nestjs-zod';
+import { cleanupOpenApiDoc, ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(new ZodValidationPipe());
+  app.useGlobalInterceptors(new ZodSerializerInterceptor());
 
   if (process.env.NODE_ENV === 'development') {
     const config = new DocumentBuilder()

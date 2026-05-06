@@ -5,13 +5,19 @@ import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
-import { appConfig, validationSchema } from './config/configuration';
+import {
+  appConfig,
+  authConfig,
+  oauthConfig,
+  validationSchema,
+  webConfig,
+} from './config/configuration';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig],
+      load: [appConfig, authConfig, oauthConfig, webConfig],
       validate: (env) => validationSchema.parse(env),
     }),
     AuthModule,

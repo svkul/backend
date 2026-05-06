@@ -1,26 +1,31 @@
 import { z } from 'zod';
 
-export const signInSchema = z.object({
-  email: z.email(),
-  password: z.string().min(8).max(128),
+export const tokenPairResponseSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
 });
 
-export const signInResponseSchema = z.object({
+export const refreshResponseSchema = z.object({
   accessToken: z.string(),
 });
 
-export const listSessionsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+export const logoutResponseSchema = z.object({
+  ok: z.literal(true),
 });
 
-export const listSessionsResponseSchema = z.object({
-  page: z.number().int(),
-  limit: z.number().int(),
-  items: z.array(z.string()),
+export const oauthLoginProfileSchema = z.object({
+  provider: z.string().min(1),
+  providerAccountId: z.string().min(1),
+  email: z.string().email(),
+  name: z.string().optional(),
+  avatarUrl: z.string().url().optional(),
+  userAgent: z.string().optional(),
+  ip: z.string().optional(),
+  deviceName: z.string().optional(),
+  platform: z.string().optional(),
 });
 
-export type SignInInput = z.infer<typeof signInSchema>;
-export type SignInResponse = z.infer<typeof signInResponseSchema>;
-export type ListSessionsQuery = z.infer<typeof listSessionsQuerySchema>;
-export type ListSessionsResponse = z.infer<typeof listSessionsResponseSchema>;
+export type TokenPairResponse = z.infer<typeof tokenPairResponseSchema>;
+export type RefreshResponse = z.infer<typeof refreshResponseSchema>;
+export type LogoutResponse = z.infer<typeof logoutResponseSchema>;
+export type OAuthLoginProfile = z.infer<typeof oauthLoginProfileSchema>;

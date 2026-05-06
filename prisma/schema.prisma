@@ -1,0 +1,87 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  avatarUrl     String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  devices       Device[]
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+
+  userId             String
+  provider           String  // "google", "apple", etc.
+  providerAccountId  String  // id від Google
+
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt          DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id             String   @id @default(cuid())
+
+  userId         String
+  deviceId       String?
+
+  tokenHash      String
+
+  revoked        Boolean  @default(false)
+  revokedAt      DateTime?
+
+  expiresAt      DateTime
+  lastUsedAt     DateTime?
+
+  userAgent      String?
+  ip             String?
+
+  createdAt      DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device         Device?  @relation(fields: [deviceId], references: [id])
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([tokenHash])
+}
+
+model Device {
+  id         String   @id @default(cuid())
+
+  userId     String
+
+  name       String?
+  platform   String?
+
+  userAgent  String?
+  ip         String?
+
+  createdAt  DateTime @default(now())
+
+  sessions   Session[]
+
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

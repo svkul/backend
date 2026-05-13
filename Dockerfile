@@ -6,7 +6,10 @@ ARG PNPM_VERSION=10.33.2
 
 FROM node:${NODE_VERSION}-bookworm-slim AS base
 WORKDIR /app
-RUN npm install -g pnpm@${PNPM_VERSION}
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g pnpm@${PNPM_VERSION}
 
 FROM base AS builder
 COPY package.json pnpm-lock.yaml ./

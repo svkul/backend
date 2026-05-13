@@ -1,0 +1,3 @@
+# Railway / Nixpacks: pin Node LTS; install + build use package.json (postinstall runs prisma generate).
+[phases.setup]
+nixPkgs = ["nodejs_20"]

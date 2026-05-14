@@ -22,9 +22,15 @@ describe('AuthController', () => {
         {
           provide: ConfigService,
           useValue: {
+            get: jest.fn((key: string) => {
+              if (key === 'auth.cookieDomain') return undefined;
+              return undefined;
+            }),
             getOrThrow: jest.fn((key: string) => {
               if (key === 'web.frontendUrl') return 'http://localhost:3000';
               if (key === 'app.NODE_ENV') return 'development';
+              if (key === 'auth.accessTokenCookieMaxAgeMs') return 60_000;
+              if (key === 'auth.refreshTokenTtlWebMs') return 1_209_600_000;
               throw new Error(`Unexpected config key: ${key}`);
             }),
           },

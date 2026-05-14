@@ -35,37 +35,36 @@
   - upsert **`User`** + **`Account`** (`provider`, `providerAccountId`);
   - знайти/оновити або створити **`Device`**;
   - створити **`Session`** (новий refresh, `client` для web);
-  - встановити cookies **`accessToken`** та **`refreshToken`** (HttpOnly, `secure` у production, `sameSite: 'strict'`);
+  - встановити cookies **`accessToken`** та **`refreshToken`** (HttpOnly, `secure` у production, **`sameSite: 'lax'`**);
+  - опційно атрибут **`Domain`** з **`COOKIE_DOMAIN`** (наприклад `.example.com`), якщо змінна непорожня — потрібно для того, щоб браузер надсилав ті самі cookies і на **`app`**, і на **`api`** піддомен;
   - **`redirect`** на **`{FRONTEND_URL}/auth/callback`** (див. `web.frontendUrl` / `FRONTEND_URL`).
 
-Шляхи cookies: `accessToken` — `path: '/'`; **`refreshToken`** — **`path: '/auth/refresh'`** (узгоджено з **`POST /auth/refresh`**, щоб браузер надсилав cookie лише на rotation).
+Шляхи cookies: `accessToken` — **`path: '/'`**; **`refreshToken`** — **`path: '/auth'`** (надсилається на всі шляхи під **`/auth/*`**, зокрема **`POST /auth/refresh`** і **`POST /auth/logout`**).
 
 ### Поточний користувач
 
 - **`GET /auth/me`**  
-  Потребує **`Authorization: Bearer <accessToken>`** (JWT). Повертає **`{ user: { id, email, name, avatarUrl } }`**.
+  Потребує access JWT у **`Authorization: Bearer <accessToken>`** або в HttpOnly cookie **`accessToken`** (web). Повертає **`{ user: { id, email, name, avatarUrl } }`**.
 
 ### Оновлення токенів (rotation)
 
 - **`POST /auth/refresh`**  
-  Refresh з **`Authorization: Bearer`** (mobile) або з cookie **`refreshToken`** (web, `credentials: 'include'` з того ж сайту, що й API cookie).  
-  Повертає JSON **`{ accessToken, refreshToken }`**.  
+  Refresh з **`Authorization: Bearer`** (mobile) або з cookie **`refreshToken`** (web, `credentials: 'include'`).  
+  Повертає JSON **`{ accessToken, refreshToken }`** і виставляє **`Set-Cookie`** для **`accessToken`** / **`refreshToken`** (оновлення HttpOnly пари після rotation).  
   Під **`@Throttle`** (чутливий ліміт); див. глобальний throttler у `AppModule`.
-
-Після початкового логіну cookies вже виставлені callback-ом; якщо клієнт покладається лише на cookies для refresh, переконайтеся, що новий refresh з тіла відповіді також зберігається там, де очікує ваш фронт (callback виставляє cookie один раз — поведінка подальших оновлень залежить від вашого клієнта).
 
 ### Logout
 
 - **`POST /auth/logout`**  
-  Той самий спосіб передачі refresh, що й для **`/auth/refresh`**. Ревокує поточну сесію за хешем. Відповідь **`{ ok: true }`**.
+  Якщо є refresh (Bearer або cookie **`refreshToken`**) — ревокує поточну сесію за хешем; якщо refresh відсутній (наприклад зламаний стан після 401) — все одно очищає auth-cookies у відповіді. Завжди **`Set-Cookie`** з очищенням **`accessToken`** / **`refreshToken`**. Тіло **`{ ok: true }`**.
 
 - **`POST /auth/logout-all`**  
-  Потребує **Bearer access JWT**. Ревокує всі сесії користувача. У аудит передаються **`User-Agent`** та IP з запиту.
+  Потребує access JWT (Bearer або cookie **`accessToken`**). Ревокує всі сесії користувача, очищає auth-cookies у відповіді. У аудит передаються **`User-Agent`** та IP з запиту.
 
 ### Допоміжний захищений маршрут
 
 - **`POST /auth/protected`**  
-  Потребує Bearer access JWT; для перевірки guard.
+  Потребує access JWT у **`Authorization: Bearer`** або в cookie **`accessToken`**.
 
 ### Liveness (не auth)
 
@@ -74,11 +73,11 @@
 ## Обмеження та плани
 
 - **Mobile OAuth (PKCE)**, **`POST /auth/mobile/.../exchange`** у цьому репозиторії ще не реалізовані — refresh уже підтримує Bearer для майбутнього mobile.
-- **BFF Next.js** (`/api/auth/*`) у цьому описі не використовується: callback редіректить на **`FRONTEND_URL/auth/callback`**, cookies ставить API (для крос-сайтового web потрібні спільний parent-домен, CORS `credentials`, і згодом `Domain` cookie згідно з вашим `Docs/auth-solution.md`).
+- **BFF Next.js** (`/api/auth/*`) не використовується: Next ходить на API напряму з **`credentials: 'include'`**; для SSR на домені **`app`** браузер має надсилати ті самі cookies, що й на **`api`** — у production зазвичай **`COOKIE_DOMAIN`** на parent-домені (див. `Docs/auth-solution.md`).
 
 ## Інтеграція фронтенду (коротко)
 
 - Редірект на **`<API_URL>/auth/google`**.
 - Після логіну — сторінка **`/auth/callback`** на **`FRONTEND_URL`** (може просто редіректнути в застосунок).
 - Запити до API з cookies: **`fetch(..., { credentials: 'include' })`**, CORS має дозволяти origin фронту та **`credentials: true`** (див. `web.corsOrigins`).
-- Захищені маршрути: **`Authorization: Bearer <accessToken>`**.
+- Захищені маршрути в браузері: достатньо HttpOnly **`accessToken`** (JWT guard читає Bearer або cookie); mobile може лишатися на **`Authorization: Bearer`**.

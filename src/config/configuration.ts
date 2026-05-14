@@ -28,6 +28,11 @@ export const validationSchema = z.object({
   FRONTEND_URL: z.url(),
   /** Optional comma-separated extra browser origins for CORS (e.g. marketing on www). FRONTEND_URL is always included. */
   CORS_URL: z.string().optional().default(''),
+  /**
+   * Optional `Domain` attribute for auth cookies (e.g. `.example.com` for app+api subdomains).
+   * Leave empty on localhost / single-host dev.
+   */
+  COOKIE_DOMAIN: z.string().optional().default(''),
 });
 
 type EnvConfig = z.infer<typeof validationSchema>;
@@ -79,6 +84,7 @@ export const authConfig = registerAs('auth', () => {
     refreshTokenTtlWebMs: parseDurationMs(env.REFRESH_TOKEN_TTL_WEB),
     refreshTokenTtlMobileMs: parseDurationMs(env.REFRESH_TOKEN_TTL_MOBILE),
     refreshTokenAbsoluteMaxMs: parseDurationMs(env.REFRESH_TOKEN_ABSOLUTE_MAX),
+    cookieDomain: env.COOKIE_DOMAIN.trim() || undefined,
   };
 });
 

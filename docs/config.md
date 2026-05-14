@@ -49,6 +49,7 @@
 | **`GOOGLE_CALLBACK_URL`** | так | Валідний URL (redirect URI у Google Cloud). |
 | **`FRONTEND_URL`** | так | Канонічний URL веб-застосунку; редірект після OAuth: **`/auth/callback`**. |
 | **`CORS_URL`** | опційно | Додаткові browser origins через **кому**; **`FRONTEND_URL`** завжди у списку CORS. Порожній рядок за замовчуванням. |
+| **`COOKIE_DOMAIN`** | опційно | Підмножина **`Domain`** для auth-cookies (наприклад **`.example.com`**). Порожньо на localhost / без спільного parent-домену. |
 
 Повний приклад імен див. **`.env.example`** у корені `backend/`.
 

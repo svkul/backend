@@ -2,74 +2,83 @@
 
 ## Мета
 
-Цей документ описує, як працює аутентифікація через OAuth (Google) та авторизація через JWT access token + refresh-сесії (cookie) в проєкті, а також як має інтегруватись фронтенд.
+Цей документ описує поточну реалізацію: OAuth (Google) на бекенді, JWT access token, refresh-сесії в PostgreSQL (хеш токена), rotation з захистом від reuse, та як клієнт має викликати API.
 
 ## Базові принципи
 
-- Аутентифікація через зовнішнього провайдера (Google) відбувається на бекенді.
-- Фронтенд не використовує Google SDK для логіну: лише redirect на бекенд.
-- `accessToken` — короткоживучий JWT (Bearer), використовується для доступу до захищених API.
-- `refresh_token` — довгоживучий токен, використовується для rotation та передається BFF -> backend через `Authorization: Bearer`.
-- Refresh токени зберігаються в БД як хеш (SHA-256), а не у відкритому вигляді.
-- Підтримується rotation refresh токенів і захист від reuse (повна ревокація сесій користувача при повторному використанні).
+- Логін через Google виконується на бекенді (Passport); клієнт лише відкриває `GET /auth/google` у браузері.
+- **Access token** — JWT (`HS256`) з полями **`iss`** і **`aud`**; час життя задається **`JWT_ACCESS_TTL`** (див. `docs/config.md`).
+- **Refresh token** — непрозорий випадковий рядок; у БД зберігається лише **SHA-256 хеш** (`Session.tokenHash`, унікальний індекс).
+- **Rotation**: при кожному успішному `POST /auth/refresh` стара сесія атомарно відкликається в транзакції, видається нова пара токенів. Повторне використання вже відкликаного refresh → **reuse detection** (відкликання активних сесій користувача, `401`).
+- Після логіну через Google callback бекенд виставляє **HttpOnly cookies** `accessToken` та **`refreshToken`** (camelCase; **не** `refresh_token`).
+- Для **web** і **mobile** один ендпоінт refresh/logout: refresh-токен береться з **`Authorization: Bearer <refresh>`** або з cookie **`refreshToken`**. Якщо передано обидва, пріоритет у **Bearer** (зручно для mobile поверх cookie).
 
 ## Терміни
 
-- **Access token**: JWT, TTL `15m`, передається у `Authorization: Bearer ...`.
-- **Refresh token**: випадковий рядок, TTL `7 days`, зберігається в cookie `refresh_token`, використовується для отримання нового access token.
-- **Session**: запис у БД, що містить `tokenHash`, `expiresAt`, `revoked`, а також метадані (ip, userAgent, deviceId).
+- **Access token**: JWT, TTL з **`JWT_ACCESS_TTL`** (у `.env.example` за замовчуванням короткий інтервал для dev; у production зазвичай `15m` тощо).
+- **Refresh token**: довгоживучий opaque токен; sliding TTL залежить від **`Session.client`** (`web` | `ios` | `android`) — **`REFRESH_TOKEN_TTL_WEB`** / **`REFRESH_TOKEN_TTL_MOBILE`**; верхня межа ланцюга refresh — **`REFRESH_TOKEN_ABSOLUTE_MAX`** (`Session.absoluteExpiresAt`).
+- **Session**: `tokenHash`, `expiresAt`, `absoluteExpiresAt`, `client`, `revoked`, `revokedAt`, опційно `userAgent`, `ip`, `deviceId`.
+- **Device**: прив’язка до користувача; для web OAuth зараз створюється/оновлюється device з `platform: web`.
+- **AuthEvent**: таблиця аудиту (типи на кшталт `login_success`, `refresh`, `refresh_fail`, `reuse_detected`, `logout`, `logout_all`); записи не повинні ламати основні флоу при збоях БД.
 
 ## Ендпоінти
 
 ### Початок OAuth (Google)
 
-- `GET /auth/google`
-  - Redirect на Google OAuth.
-  - Використовується з клієнта як `window.location.href = API_URL + '/auth/google'`.
+- **`GET /auth/google`**  
+  Redirect на Google. З клієнта: `window.location.href = <API_ORIGIN>/auth/google` (або еквівалент).
 
 ### OAuth callback (Google)
 
-- `GET /auth/google/callback`
-  - Бекенд:
-    - знаходить або створює `User` + `Account(provider, providerAccountId)`
-    - знаходить існуючий `Device` (за `userId + name + platform + userAgent`) або створює новий
-    - створює `Session` з `tokenHash`
-    - web flow:
-      - повертає `accessToken` + `refreshToken` через redirect на frontend BFF callback (`/api/auth/callback`)
-      - frontend BFF встановлює cookie на своєму домені
-    - mobile flow:
-      - тимчасово відкладено; поточна реалізація сфокусована лише на web cookie flow
+- **`GET /auth/google/callback`**  
+  Після успіху Passport:
+  - upsert **`User`** + **`Account`** (`provider`, `providerAccountId`);
+  - знайти/оновити або створити **`Device`**;
+  - створити **`Session`** (новий refresh, `client` для web);
+  - встановити cookies **`accessToken`** та **`refreshToken`** (HttpOnly, `secure` у production, `sameSite: 'strict'`);
+  - **`redirect`** на **`{FRONTEND_URL}/auth/callback`** (див. `web.frontendUrl` / `FRONTEND_URL`).
 
-### Bootstrap сесії
-
-- `POST /auth/bootstrap`
-  - Читає refresh token з `Authorization: Bearer`.
-  - Валідує refresh-сесію (існує, не revoked, не expired).
-  - Повертає:
-    - `accessToken` (новий JWT для API запитів)
-    - `user` (`id`, `email`, `name`, `avatarUrl`)
-  - Якщо refresh-сесія невалідна, повертає `401`.
+Шляхи cookies (поточний код): `accessToken` — `path: '/'`; **`refreshToken`** — `path: '/api/auth/refresh'`. Ендпоінт rotation у Nest — **`POST /auth/refresh`** (без глобального префікса `/api`). Якщо браузер не надсилає refresh-cookie на `POST /auth/refresh`, вирівняйте **`path`** у `auth.controller.ts` з реальним URL API (див. також план у `Docs/auth-solution.md`: cookie path = шлях ендпоінта refresh).
 
 ### Поточний користувач
 
-- `POST /auth/me`
-  - Потребує валідний `accessToken` в `Authorization: Bearer`.
-  - Повертає тільки `user` (`id`, `email`, `name`, `avatarUrl`).
-  - Не видає новий `accessToken`.
+- **`GET /auth/me`**  
+  Потребує **`Authorization: Bearer <accessToken>`** (JWT). Повертає **`{ user: { id, email, name, avatarUrl } }`**.
 
-### Оновлення access token (rotation)
+### Оновлення токенів (rotation)
 
-- `POST /auth/refresh`
-  - Читає поточний refresh token з `Authorization: Bearer`.
-  - Виконує rotation refresh токена (старий revoke, новий create).
-  - Повертає `accessToken` + `refreshToken`.
+- **`POST /auth/refresh`**  
+  Refresh з **`Authorization: Bearer`** (mobile) або з cookie **`refreshToken`** (web, `credentials: 'include'` з того ж сайту, що й API cookie).  
+  Повертає JSON **`{ accessToken, refreshToken }`**.  
+  Під **`@Throttle`** (чутливий ліміт); див. глобальний throttler у `AppModule`.
+
+Після початкового логіну cookies вже виставлені callback-ом; якщо клієнт покладається лише на cookies для refresh, переконайтеся, що новий refresh з тіла відповіді також зберігається там, де очікує ваш фронт (callback виставляє cookie один раз — поведінка подальших оновлень залежить від вашого клієнта).
 
 ### Logout
 
-- `POST /auth/logout`
-  - Ревокує поточну refresh-сесію за refresh токеном із `Authorization`.
-  - Використовується для logout на поточному девайсі/сесії.
+- **`POST /auth/logout`**  
+  Той самий спосіб передачі refresh, що й для **`/auth/refresh`**. Ревокує поточну сесію за хешем. Відповідь **`{ ok: true }`**.
 
-- `POST /auth/logout-all`
-  - Потребує валідний `accessToken`.
-  - Ревокує всі refresh-сесії поточного користувача.
+- **`POST /auth/logout-all`**  
+  Потребує **Bearer access JWT**. Ревокує всі сесії користувача. У аудит передаються **`User-Agent`** та IP з запиту.
+
+### Допоміжний захищений маршрут
+
+- **`POST /auth/protected`**  
+  Потребує Bearer access JWT; для перевірки guard.
+
+### Liveness (не auth)
+
+- **`GET /healthz`** — **`{ ok: true }`**; без throttling (`@SkipThrottle`). Для Railway healthcheck.
+
+## Обмеження та плани
+
+- **Mobile OAuth (PKCE)**, **`POST /auth/mobile/.../exchange`** у цьому репозиторії ще не реалізовані — refresh уже підтримує Bearer для майбутнього mobile.
+- **BFF Next.js** (`/api/auth/*`) у цьому описі не використовується: callback редіректить на **`FRONTEND_URL/auth/callback`**, cookies ставить API (для крос-сайтового web потрібні спільний parent-домен, CORS `credentials`, і згодом `Domain` cookie згідно з вашим `Docs/auth-solution.md`).
+
+## Інтеграція фронтенду (коротко)
+
+- Редірект на **`<API_URL>/auth/google`**.
+- Після логіну — сторінка **`/auth/callback`** на **`FRONTEND_URL`** (може просто редіректнути в застосунок).
+- Запити до API з cookies: **`fetch(..., { credentials: 'include' })`**, CORS має дозволяти origin фронту та **`credentials: true`** (див. `web.corsOrigins`).
+- Захищені маршрути: **`Authorization: Bearer <accessToken>`**.

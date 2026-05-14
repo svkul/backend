@@ -5,3 +5,9 @@ export const helloResponseSchema = z.object({
 });
 
 export type HelloResponse = z.infer<typeof helloResponseSchema>;
+
+export const healthzResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+export type HealthzResponse = z.infer<typeof healthzResponseSchema>;

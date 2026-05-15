@@ -21,30 +21,28 @@ async function bootstrap() {
   const PORT = configService.getOrThrow<number>('app.PORT');
   const corsOrigins = configService.getOrThrow<string[]>('web.corsOrigins');
 
-  const isProd = NODE_ENV === 'production';
-
   app.use(
     helmet({
-      // Strict CSP for backend HTML responses (Swagger in dev, error pages in prod).
-      // Turnstile widget + Google login form-action are allow-listed.
-      contentSecurityPolicy: isProd
-        ? {
-            useDefaults: true,
-            directives: {
-              'default-src': ["'self'"],
-              'script-src': ["'self'", 'https://challenges.cloudflare.com'],
-              'style-src': ["'self'", "'unsafe-inline'"],
-              'img-src': ["'self'", 'data:', 'https://lh3.googleusercontent.com'],
-              'connect-src': ["'self'", 'https://challenges.cloudflare.com'],
-              'frame-src': ['https://challenges.cloudflare.com'],
-              'frame-ancestors': ["'none'"],
-              'form-action': ["'self'", 'https://accounts.google.com'],
-              'base-uri': ["'none'"],
-              'object-src': ["'none'"],
-              'upgrade-insecure-requests': [],
-            },
-          }
-        : false,
+      // CSP disabled for testing — restore before production.
+      contentSecurityPolicy: false,
+      // contentSecurityPolicy: isProd
+      //   ? {
+      //       useDefaults: true,
+      //       directives: {
+      //         'default-src': ["'self'"],
+      //         'script-src': ["'self'", 'https://challenges.cloudflare.com'],
+      //         'style-src': ["'self'", "'unsafe-inline'"],
+      //         'img-src': ["'self'", 'data:', 'https://lh3.googleusercontent.com'],
+      //         'connect-src': ["'self'", 'https://challenges.cloudflare.com'],
+      //         'frame-src': ['https://challenges.cloudflare.com'],
+      //         'frame-ancestors': ["'none'"],
+      //         'form-action': ["'self'", 'https://accounts.google.com'],
+      //         'base-uri': ["'none'"],
+      //         'object-src': ["'none'"],
+      //         'upgrade-insecure-requests': [],
+      //       },
+      //     }
+      //   : false,
       hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
       // API is consumed only by porych.com / api.porych.com — same registrable domain.
       crossOriginResourcePolicy: { policy: 'same-site' },
